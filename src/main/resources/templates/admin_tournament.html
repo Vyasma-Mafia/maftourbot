@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="'Турнир: ' + ${tournament.name}">Турнир</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --primary-dark: #2980b9;
+            --secondary-color: #e74c3c;
+            --bg-light: #f8f9fa;
+            --bg-white: #ffffff;
+            --border-color: #e0e0e0;
+            --text-color: #333333;
+            --text-light: #777777;
+            --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --spacing-xs: 3px;
+            --spacing-sm: 5px;
+            --spacing-md: 8px;
+            --spacing-lg: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.4;
+            color: var(--text-color);
+            background-color: var(--bg-light);
+            padding: var(--spacing-md);
+            max-width: 1600px;
+            margin: 0 auto;
+            font-size: 12px;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: var(--spacing-sm);
+        }
+
+        h2 {
+            font-size: 1rem;
+            margin-bottom: var(--spacing-md);
+        }
+
+        h3 {
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+
+        .section {
+            background-color: var(--bg-white);
+            border-radius: 4px;
+            box-shadow: var(--card-shadow);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-md);
+            cursor: pointer;
+        }
+
+        .collapsed .section-content {
+            display: none;
+        }
+
+        /* Стили для сетки с карточками в строках */
+        .card-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+
+        /* Стили для карточек столов - 6 в строке */
+        .table-card {
+            /* 16.666% = примерно 1/6 ширины, минус отступ */
+            flex: 0 0 calc(16.666% - var(--spacing-md));
+            background-color: var(--bg-light);
+            border-radius: 3px;
+            border: 1px solid var(--border-color);
+            padding: var(--spacing-sm);
+            transition: all 0.2s;
+        }
+
+        .table-card:hover {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-color: #ccc;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-xs);
+            align-items: center;
+        }
+
+        /* Стили для карточек туров - 4 в строке */
+        .tour-card {
+            flex: 0 0 calc(25% - var(--spacing-md));
+            background-color: var(--bg-light);
+            border-radius: 3px;
+            border: 1px solid var(--border-color);
+            padding: var(--spacing-md);
+        }
+
+        .tour-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        /* Супер-компактные формы */
+        .compact-form {
+            display: flex;
+            gap: var(--spacing-xs);
+            align-items: center;
+        }
+
+        .form-group {
+            margin-bottom: 0;
+            flex-grow: 1;
+        }
+
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: var(--spacing-xs);
+            font-size: 0.8rem;
+            color: var(--text-light);
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            font-size: 0.85rem;
+            height: 24px;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            min-width: 28px;
+        }
+
+        .notify-button {
+            background-color: var(--secondary-color);
+            margin-top: var(--spacing-xs);
+            width: 100%;
+            height: 24px;
+        }
+
+        .badge {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 1px 4px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            display: inline-block;
+        }
+
+        /* Адаптивность - количество карточек в строке меняется в зависимости от размера экрана */
+        @media (max-width: 1400px) {
+            .table-card {
+                flex: 0 0 calc(20% - var(--spacing-md));
+            }
+
+            /* 5 в строке */
+            .tour-card {
+                flex: 0 0 calc(33.333% - var(--spacing-md));
+            }
+
+            /* 3 в строке */
+        }
+
+        @media (max-width: 1200px) {
+            .table-card {
+                flex: 0 0 calc(25% - var(--spacing-md));
+            }
+
+            /* 4 в строке */
+            .tour-card {
+                flex: 0 0 calc(33.333% - var(--spacing-md));
+            }
+
+            /* 3 в строке */
+        }
+
+        @media (max-width: 992px) {
+            .table-card {
+                flex: 0 0 calc(33.333% - var(--spacing-md));
+            }
+
+            /* 3 в строке */
+            .tour-card {
+                flex: 0 0 calc(50% - var(--spacing-md));
+            }
+
+            /* 2 в строке */
+        }
+
+        @media (max-width: 768px) {
+            .table-card {
+                flex: 0 0 calc(50% - var(--spacing-md));
+            }
+
+            /* 2 в строке */
+            .tour-card {
+                flex: 0 0 calc(100% - var(--spacing-md));
+            }
+
+            /* 1 в строке */
+        }
+
+        @media (max-width: 480px) {
+            .table-card {
+                flex: 0 0 calc(100% - var(--spacing-md));
+            }
+
+            /* 1 в строке */
+        }
+    </style>
+</head>
+<body>
+<h1 th:text="'Турнир: ' + ${tournament.name}">Турнир: Название</h1>
+
+<!-- Секция с настройками столов - до 6 карточек в строке -->
+<div class="section" id="tables-section">
+    <div class="section-header" onclick="toggleSection('tables-section')">
+        <h2>Местоположение столов</h2>
+        <span class="collapse-icon">▼</span>
+    </div>
+    <div class="section-content">
+        <div class="card-grid">
+            <div class="table-card" th:if="${tableNumbers != null && !tableNumbers.empty}"
+                    th:each=" tableNumber : ${tableNumbers}">
+                <div class="table-header">
+                    <h3 th:text="'Стол ' + ${tableNumber}">Стол</h3>
+                </div>
+                <form method="post"
+                        th:action="'/admin/tournament/' + ${tournament.id} + '/table/' + ${tableNumber} + '/update'"
+                        class="compact-form">
+                    <div class="form-group">
+                        <input type="text" name="location"
+                                th:value="${tableLocations != null && tableLocations[tableNumber] != null ? tableLocations[tableNumber] : ''}"
+                                placeholder="Локация">
+                    </div>
+                    <button type="submit">✓</button>
+                </form>
+            </div>
+            <p th:if="${tableNumbers == null || tableNumbers.empty}">В этом турнире пока нет столов</p>
+        </div>
+    </div>
+</div>
+
+<!-- Секция с турами - до 4 карточек в строке -->
+<div class="section" id="tours-section">
+    <div class="section-header" onclick="toggleSection('tours-section')">
+        <h2>Управление турами</h2>
+        <span class="collapse-icon">▼</span>
+    </div>
+    <div class="section-content">
+        <div class="card-grid">
+            <div class="tour-card" th:if="${!tournament.tours.empty}" th:each="tour : ${tournament.tours}">
+                <div class="tour-header">
+                    <h3 th:text="'Тур ' + ${tour.number}">Тур</h3>
+                    <span class="badge" th:text="${tour.tables.size() + ' столов'}">10</span>
+                </div>
+
+                <form method="post"
+                        th:action="'/admin/tournament/' + ${tournament.id} + '/tour/' + ${tour.number} + '/update'"
+                        class="compact-form">
+                    <div class="form-group">
+                        <label>Время начала:</label>
+                        <input type="text" name="startTime" th:value="${tour.startTime != null ? tour.startTime : ''}"
+                                placeholder="например: 14:30">
+                    </div>
+                    <button type="submit">✓</button>
+                </form>
+
+                <form method="post"
+                        th:action="'/admin/tournament/' + ${tournament.id} + '/tour/' + ${tour.number} + '/notify'">
+                    <button type="submit" class="notify-button">Отправить уведомления</button>
+                </form>
+            </div>
+            <div th:if="${tournament.tours.empty}">
+                <p>У этого турнира пока нет туров.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="text-align: center; margin-top: var(--spacing-lg);">
+    <a href="/admin" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem;">← Вернуться к списку
+        турниров</a>
+</div>
+
+<script>
+    function toggleSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        section.classList.toggle('collapsed');
+
+        const icon = section.querySelector('.collapse-icon');
+        if (section.classList.contains('collapsed')) {
+            icon.textContent = '►';
+        } else {
+            icon.textContent = '▼';
+        }
+    }
+</script>
+</body>
+</html>
