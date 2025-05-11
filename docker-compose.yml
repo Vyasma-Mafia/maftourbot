@@ -18,7 +18,7 @@ services:
       timeout: 5s
 
   maftourbot:
-    image: ghcr.io/vyasma-mafia/maftourbot:master
+    image: ghcr.io/vyasma-mafia/maftourbot:main
     container_name: maftourbot
     ports:
       - "8092:8080"
