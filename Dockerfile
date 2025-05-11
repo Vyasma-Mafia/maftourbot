@@ -1,5 +1,5 @@
 # STAGE 1: Build the Kotlin app with Gradle
-FROM gradle:jdk21 AS build
+FROM gradle:jdk17 AS build
 
 # Set the working directory in the container
 WORKDIR /app
@@ -21,7 +21,7 @@ COPY src /app/src
 RUN ./gradlew --no-daemon build
 
 # STAGE 2: Create a minimal image to run the Kotlin app
-FROM openjdk:21-jdk-slim
+FROM openjdk:17-jdk-slim
 
 # Set the working directory for the new container
 WORKDIR /app
