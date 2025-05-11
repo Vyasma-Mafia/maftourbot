@@ -19,10 +19,9 @@ services:
 
   maftourbot:
     image: ghcr.io/vyasma-mafia/maftourbot:master
-    #    build: .
     container_name: maftourbot
     ports:
-      - "8090:8080"
+      - "8092:8080"
     environment:
       DATABASE_URL: jdbc:postgresql://maftourbot-db:5432/maftourbot
       DATABASE_USER: ${DB_USER}
