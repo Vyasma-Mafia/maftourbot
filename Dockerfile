@@ -5,7 +5,7 @@ FROM gradle:jdk21 AS build
 WORKDIR /app
 
 # Copy only build configuration files (dependencies are resolved first to benefit from Docker layer caching)
-COPY build.gradle settings.gradle.kts gradlew /app/
+COPY build.gradle.kts gradlew /app/
 COPY gradle /app/gradle
 
 # Grant execute permission to gradlew
