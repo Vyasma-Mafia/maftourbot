@@ -34,6 +34,10 @@ class PlayerRepository {
     fun getAllPlayers(): List<PlayerDto> = transaction {
         Player.all().map { it.toDto() }
     }
+
+    fun getPlayersByGomafiaId(gomafiaId: Int): List<PlayerDto> = transaction {
+        Player.find { Players.gomafiaId eq gomafiaId }.map { it.toDto() }
+    }
 }
 
 class TournamentRepository {

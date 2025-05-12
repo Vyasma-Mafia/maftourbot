@@ -20,17 +20,15 @@ class NotificationService(
             ?: return
 
         val startTime = tour.startTime ?: "Не указано"
-        val tourName = "Тур $tourNumber"
 
         // Получаем местоположения столов
         val tableLocations = tour.tables.associate { it.number to (it.location ?: "") }
 
-        val players = playerRepository.getAllPlayers()
         val games = gomafiaClient.getTournament(tournamentId).games
 
-        for (player in players) {
+        for (gomafiaPlayerId in games.flatMap { it.table }.mapNotNull { it.id }.distinct()) {
             try {
-                val playerDto = getPlayerTable(games, tourNumber, player.gomafiaId)
+                val playerDto = getPlayerTable(games, tourNumber, gomafiaPlayerId)
 
                 if (playerDto != null) {
                     val message = buildString {
@@ -47,11 +45,16 @@ class NotificationService(
 
                         append("\nУдачной игры! 🃏")
                     }
-
-                    telegramBot.sendMessage(ChatId.fromId(player.telegramId), message, parseMode = ParseMode.MARKDOWN)
+                    for (player in playerRepository.getPlayersByGomafiaId(gomafiaPlayerId)) {
+                        telegramBot.sendMessage(
+                            ChatId.fromId(player.telegramId),
+                            message,
+                            parseMode = ParseMode.MARKDOWN
+                        )
+                    }
                 }
             } catch (e: Exception) {
-                println("Ошибка при отправке уведомления игроку ${player.gomafiaId}: ${e.message}")
+                println("Ошибка при отправке уведомления игроку ${gomafiaPlayerId}: ${e.message}")
             }
         }
     }

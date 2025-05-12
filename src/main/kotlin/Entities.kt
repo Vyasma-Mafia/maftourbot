@@ -10,7 +10,7 @@ import org.jetbrains.exposed.sql.select
 object Players : IntIdTable() {
     val telegramId = long("telegram_id").uniqueIndex()
     val gomafiaProfileUrl = text("gomafia_profile_url")
-    val gomafiaId = integer("gomafia_id").uniqueIndex()
+    val gomafiaId = integer("gomafia_id").index()
 }
 
 object Tournaments : IntIdTable() {
