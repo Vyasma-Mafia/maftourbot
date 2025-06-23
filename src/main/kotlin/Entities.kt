@@ -48,7 +48,7 @@ object TourTablePlayers : IntIdTable("tour_table_players") {
     val position = integer("position")
 
     init {
-        index(true, tourId, tableNumber)
+        index(true, tourId, tableNumber, position)
     }
 }
 

@@ -94,19 +94,15 @@ class TournamentRepository {
                 // Добавляем новых игроков за стол
                 for (playerDto in tableDto.players) {
                     // Находим или создаем игрока
-                    val player = Player.find { Players.gomafiaId eq playerDto.gomafiaId }.firstOrNull()
+                    val tablePosition =
+                        tourDto.tables.find { it.number == tableDto.number }
+                            ?.players?.find { it.gomafiaId == playerDto.gomafiaId }?.position ?: 0
 
-                    if (player != null) {
-                        val tablePosition =
-                            tourDto.tables.find { it.number == tableDto.number }
-                                ?.players?.find { it.gomafiaId == player.gomafiaId }?.position ?: 0
-
-                        TourTablePlayers.insert {
-                            it[tourId] = tour.id
-                            it[tableNumber] = tableDto.number
-                            it[gomafiaId] = player.gomafiaId
-                            it[position] = tablePosition
-                        }
+                    TourTablePlayers.insert {
+                        it[tourId] = tour.id
+                        it[tableNumber] = tableDto.number
+                        it[gomafiaId] = playerDto.gomafiaId
+                        it[position] = tablePosition
                     }
                 }
             }
@@ -122,7 +118,7 @@ class TournamentRepository {
     }
 
     fun getAllTournaments(): List<TournamentDto> = transaction {
-        TournamentEntity.all().map { it.toDto(true) }
+        TournamentEntity.all().map { it.toDto(false) }
     }
 
     fun updateTourStartTime(tournamentId: Int, tourNumber: Int, startTime: String?): Boolean = transaction {
