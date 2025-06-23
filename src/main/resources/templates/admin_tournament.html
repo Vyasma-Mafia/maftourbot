@@ -183,6 +183,33 @@
             display: inline-block;
         }
 
+        textarea {
+            font-family: inherit;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .broadcast-button {
+            background-color: var(--secondary-color);
+            color: white;
+            transition: background-color 0.2s;
+        }
+
+        .broadcast-button:hover {
+            background-color: var(--secondary-dark);
+        }
+
+        .alert-success, .alert-error {
+            animation: fadeOut 5s forwards;
+            animation-delay: 3s;
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; visibility: hidden; }
+        }
+
         /* Адаптивность - количество карточек в строке меняется в зависимости от размера экрана */
         @media (max-width: 1400px) {
             .table-card {
@@ -247,6 +274,23 @@
 </head>
 <body>
 <h1 th:text="'Турнир: ' + ${tournament.name}">Турнир: Название</h1>
+
+<!-- Добавьте это после заголовка турнира и перед другими секциями -->
+<div class="section" id="broadcast-section">
+    <div class="section-header" onclick="toggleSection('broadcast-section')">
+        <h2>Отправить сообщение всем участникам</h2>
+        <span class="collapse-icon">▼</span>
+    </div>
+    <div class="section-content">
+        <form method="post" th:action="'/admin/tournament/' + ${tournament.id} + '/broadcast'">
+            <div class="form-group">
+                <label for="broadcast-message">Текст сообщения:</label>
+                <textarea id="broadcast-message" name="message" rows="3" style="width: 100%; resize: vertical; padding: 8px;" placeholder="Введите сообщение для всех участников турнира"></textarea>
+            </div>
+            <button type="submit" class="broadcast-button" style="background-color: var(--secondary-color); width: 100%; margin-top: 8px;">Отправить всем участникам</button>
+        </form>
+    </div>
+</div>
 
 <!-- Секция с настройками столов - до 6 карточек в строке -->
 <div class="section" id="tables-section">

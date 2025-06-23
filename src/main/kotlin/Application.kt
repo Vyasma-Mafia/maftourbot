@@ -5,6 +5,7 @@ import com.github.kotlintelegrambot.bot
 import com.github.kotlintelegrambot.dispatch
 import com.github.kotlintelegrambot.dispatcher.command
 import com.github.kotlintelegrambot.entities.ChatId
+import com.github.kotlintelegrambot.entities.ParseMode
 import com.typesafe.config.ConfigFactory
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -49,6 +50,8 @@ fun main() {
 
     val gomafiaClient = GomafiaRestClient(httpClient)
 
+    val tournamentService = TournamentService(playerRepository, gomafiaClient, tournamentRepository)
+
     // Telegram бот
     val telegramBotToken = config.property("telegram.bot.token").getString()
     val telegramBot = bot {
@@ -85,6 +88,59 @@ fun main() {
                     }
                 }
             }
+
+            // В классе TelegramBot
+            command("arrangement") {
+                val telegramId = message.chat.id
+                val player = playerRepository.findByTelegramId(telegramId)
+
+                if (player == null) {
+                    bot.sendMessage(
+                        chatId = ChatId.fromId(telegramId),
+                        text = "Вы не зарегистрированы. Используйте команду /register для регистрации."
+                    )
+                    return@command
+                }
+
+                // Запускаем корутину для получения данных
+                try {
+                    val arrangementMessage = tournamentService.getPlayerArrangement(player.gomafiaId)
+
+                    if (arrangementMessage.isEmpty()) {
+                        bot.sendMessage(
+                            chatId = ChatId.fromId(telegramId),
+                            text = "Информация о вашей рассадке не найдена. Возможно, вы не участвуете ни в одном активном турнире."
+                        )
+                    } else {
+                        bot.sendMessage(
+                            chatId = ChatId.fromId(telegramId),
+                            text = arrangementMessage,
+                            parseMode = ParseMode.MARKDOWN
+                        )
+                    }
+                } catch (e: Exception) {
+                    bot.sendMessage(
+                        chatId = ChatId.fromId(telegramId),
+                        text = "Произошла ошибка при получении информации о вашей рассадке. Пожалуйста, попробуйте позже."
+                    )
+                    e.printStackTrace()
+                }
+            }
+
+            command("help") {
+                bot.sendMessage(
+                    chatId = ChatId.fromId(message.chat.id),
+                    text = """
+                            Доступные команды:
+                            /start - Начать работу с ботом
+                            /register [ссылка] - Зарегистрироваться, указав ссылку на ваш профиль gomafia
+                            /arrangement - Получить информацию о вашей рассадке во всех активных турнирах
+                            /help - Показать эту справку
+                        """.trimIndent()
+                )
+            }
+
+
         }
     }
 
@@ -93,7 +149,8 @@ fun main() {
         telegramBot,
         playerRepository,
         gomafiaClient,
-        tournamentRepository
+        tournamentRepository,
+        tournamentService
     )
 
     // Запуск бота
@@ -226,6 +283,30 @@ fun Application.configureRouting(
 
             call.respondRedirect("/admin/tournament/$tournamentId")
         }
+
+        post("/admin/tournament/{id}/broadcast") {
+            val tournamentId =
+                call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+
+            // Получаем текст сообщения из формы
+            val formParameters = call.receiveParameters()
+            val message = formParameters["message"] ?: return@post call.respond(
+                HttpStatusCode.BadRequest,
+                "Сообщение не может быть пустым"
+            )
+
+            if (message.isBlank()) {
+                call.respondRedirect("/admin/tournament/$tournamentId?error=Сообщение не может быть пустым")
+                return@post
+            }
+
+            // Отправляем сообщение всем участникам
+            notificationService.broadcastMessage(tournamentId, message)
+
+            // Перенаправляем обратно на страницу турнира с сообщением об успехе
+            call.respondRedirect("/admin/tournament/$tournamentId?success=Сообщение успешно отправлено")
+        }
+
     }
 }
 
@@ -268,12 +349,12 @@ suspend fun GomafiaRestClient.getTournamentDto(tournamentId: Int): TournamentDto
                 .distinctBy { it.id }
                 .mapNotNull { playerDto ->
                     playerDto.id?.let { playerId ->
-                        PlayerDto(
-                            id = null, // Здесь нет информации об ID в нашей системе
-                            telegramId = 0, // Здесь нет информации о Telegram ID
-                            gomafiaProfileUrl = "https://gomafia.pro/stats/$playerId",
-                            gomafiaId = playerId
-                        )
+                        playerDto.place?.let {
+                            PlayerGameDto(
+                                gomafiaId = playerId,
+                                position = it
+                            )
+                        }
                     }
                 }
 

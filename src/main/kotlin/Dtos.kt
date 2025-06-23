@@ -26,5 +26,15 @@ data class TableDto(
     val tourId: Int? = null, // Может быть null для стола турнира
     val number: Int,
     val location: String? = null,
-    val players: List<PlayerDto> = emptyList()
+    val players: List<PlayerGameDto> = emptyList()
+)
+
+data class PlayerGameDto(
+    val gomafiaId: Int,
+    val position: Int
+)
+
+data class PlayerArrangementDto(
+    val playerGame: PlayerGameDto,
+    val telegramId: Long
 )

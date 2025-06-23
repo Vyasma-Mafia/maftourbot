@@ -4,6 +4,7 @@ import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
+import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.select
 
 // Определение таблиц
@@ -43,7 +44,8 @@ object TournamentTables : IntIdTable("tournament_tables") {
 object TourTablePlayers : IntIdTable("tour_table_players") {
     val tourId = reference("tour_id", Tours)
     val tableNumber = integer("table_number")
-    val playerId = reference("player_id", Players).nullable()
+    val gomafiaId = integer("gomafia_id").nullable()
+    val position = integer("position")
 
     init {
         index(true, tourId, tableNumber)
@@ -89,12 +91,12 @@ class Tour(id: EntityID<Int>) : IntEntity(id) {
     var startTime by Tours.startTime
 
     // Получаем игроков для столов в этом туре
-    fun getTablesWithPlayers(): Map<Int, List<Player>> {
-        return TourTablePlayers.innerJoin(Players)
+    fun getTablesWithPlayers(): Map<Int, List<PlayerGameDto>> {
+        return TourTablePlayers.join(Players, JoinType.INNER, TourTablePlayers.gomafiaId, Players.gomafiaId)
             .select { TourTablePlayers.tourId eq this@Tour.id }
             .groupBy(
                 { it[TourTablePlayers.tableNumber] },
-                { Player.wrapRow(it) }
+                { PlayerGameDto(Player.wrapRow(it).gomafiaId, TourTablePlayer.wrapRow(it).position) }
             )
     }
 
@@ -104,7 +106,7 @@ class Tour(id: EntityID<Int>) : IntEntity(id) {
 
         // Формируем список столов с учетом местоположений из таблицы TournamentTables
         val tables = tournamentTables.map { tableDto ->
-            val players = tourTablesWithPlayers[tableDto.number]?.map { it.toDto() } ?: emptyList()
+            val players = tourTablesWithPlayers[tableDto.number] ?: emptyList()
 
             TableDto(
                 id = tableDto.id,
@@ -139,4 +141,13 @@ class TournamentTable(id: EntityID<Int>) : IntEntity(id) {
         location = location,
         players = emptyList() // Заполняется на уровне тура
     )
+}
+
+class TourTablePlayer(id: EntityID<Int>) : IntEntity(id) {
+    companion object : IntEntityClass<TourTablePlayer>(TourTablePlayers)
+
+    var tourId by TourTablePlayers.tourId
+    var tableNumber by TourTablePlayers.tableNumber
+    var playerId by TourTablePlayers.gomafiaId
+    var position by TourTablePlayers.position
 }
