@@ -118,7 +118,7 @@ class TournamentRepository {
     }
 
     fun getAllTournaments(): List<TournamentDto> = transaction {
-        TournamentEntity.all().map { it.toDto(false) }
+        TournamentEntity.all().map { it.toDto(true) }
     }
 
     fun updateTourStartTime(tournamentId: Int, tourNumber: Int, startTime: String?): Boolean = transaction {
