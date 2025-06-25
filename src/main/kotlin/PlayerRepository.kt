@@ -121,6 +121,10 @@ class TournamentRepository {
         TournamentEntity.all().map { it.toDto(true) }
     }
 
+    fun getAllFutureRunningTournaments(): List<TournamentDto> = transaction {
+        TournamentEntity.find { Tournaments.ended neq true }.map { it.toDto(true) }
+    }
+
     fun updateTourStartTime(tournamentId: Int, tourNumber: Int, startTime: String?): Boolean = transaction {
         val tournament = TournamentEntity.find { Tournaments.externalId eq tournamentId }.firstOrNull()
             ?: return@transaction false

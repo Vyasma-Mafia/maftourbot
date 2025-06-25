@@ -19,7 +19,7 @@ class TournamentService(
     fun getPlayerArrangement(playerId: Int): String {
         try {
             // Получаем все турниры из базы данных
-            val tournaments = tournamentRepository.getAllTournaments()
+            val tournaments = tournamentRepository.getAllFutureRunningTournaments()
 
             if (tournaments.isEmpty()) {
                 return "Нет доступных турниров."

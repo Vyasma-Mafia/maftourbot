@@ -17,6 +17,7 @@ object Players : IntIdTable() {
 object Tournaments : IntIdTable() {
     val externalId = integer("external_id").uniqueIndex()
     val name = text("name")
+    val ended = bool("ended").default(false)
 }
 
 object Tours : IntIdTable() {
