@@ -1,7 +1,5 @@
 package online.mafoverlay
 
-import io.github.mralex1810.gomafia.GomafiaRestClient
-import io.github.mralex1810.gomafia.dto.GameDto
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
@@ -9,16 +7,11 @@ import org.jetbrains.exposed.sql.transactions.transaction
 
 class TournamentService(
     private val playerRepository: PlayerRepository,
-    private val gomafiaClient: GomafiaRestClient,
     private val tournamentRepository: TournamentRepository
 ) {
 
-    /**
-     * Получает информацию о рассадке игрока по всем сохраненным в БД турнирам
-     */
-    fun getPlayerArrangement(playerId: Int): String {
+    fun getPlayerArrangement(player: PlayerDto): String {
         try {
-            // Получаем все турниры из базы данных
             val tournaments = tournamentRepository.getAllFutureRunningTournaments()
 
             if (tournaments.isEmpty()) {
@@ -27,50 +20,41 @@ class TournamentService(
 
             val result = StringBuilder()
 
-            // Проходим по каждому турниру
             for (tournament in tournaments) {
+                val externalPlayerId = when (tournament.source) {
+                    TournamentSource.GOMAFIA -> player.gomafiaId.toLong().takeIf { it != 0L }
+                    TournamentSource.POLEMICA -> player.polemicaId
+                } ?: continue
+
                 val tourArrangements = mutableListOf<TourArrangementInfo>()
+                val tableLocations = tournamentRepository.getTournamentTables(tournament.id, tournament.source)
 
-                // Получаем информацию о столах этого турнира (местоположения)
-                val tableLocations = tournamentRepository.getTournamentTables(tournament.id)
-
-                // Для каждого тура проверяем участие игрока
                 for (tour in tournament.tours) {
-                    // Получаем рассадку для данного тура
-                    val tourPlayers = getTourPlayersInfo(tournament.id, tour.number)
+                    val tourPlayers = getTourPlayersInfo(tournament.id, tournament.source, tour.number)
 
-                    // Ищем стол и слот игрока в текущем туре
                     val playerTable = tourPlayers.entries.find { (_, players) ->
-                        players.any { it.playerGame.gomafiaId == playerId }
+                        players.any { it.playerGame.externalPlayerId == externalPlayerId }
                     }
 
                     if (playerTable != null) {
                         val tableNumber = playerTable.key
-
-                        // Определяем номер слота игрока за столом
                         val players = playerTable.value
-
-                        // Находим местоположение стола
                         val tableLocation = tableLocations[tableNumber]
-
-                        // Добавляем информацию в список
-                        val player = players.find { it.playerGame.gomafiaId == playerId }
+                        val foundPlayer = players.find { it.playerGame.externalPlayerId == externalPlayerId }
                         tourArrangements.add(
                             TourArrangementInfo(
                                 tourNumber = tour.number,
                                 tableNumber = tableNumber,
-                                position = player?.playerGame?.position ?: 0,
+                                position = foundPlayer?.playerGame?.position ?: 0,
                                 tableLocation = tableLocation
                             )
                         )
                     }
                 }
 
-                // Если найдена информация о рассадке в этом турнире
                 if (tourArrangements.isNotEmpty()) {
                     result.append("*${tournament.name}*\n")
 
-                    // Сортируем туры по номеру
                     tourArrangements.sortedBy { it.tourNumber }.forEach { arrangement ->
                         val locationInfo = if (!arrangement.tableLocation.isNullOrBlank())
                             " (${arrangement.tableLocation})" else ""
@@ -85,15 +69,12 @@ class TournamentService(
 
             return if (result.isEmpty()) "Информация о вашей рассадке не найдена." else result.toString().trim()
         } catch (e: Exception) {
-            println("Ошибка при получении информации о рассадке игрока $playerId: ${e.message}")
+            println("Ошибка при получении информации о рассадке игрока: ${e.message}")
             e.printStackTrace()
             return "Произошла ошибка при получении информации о рассадке."
         }
     }
 
-    /**
-     * Вспомогательный класс для хранения информации о рассадке в туре
-     */
     private data class TourArrangementInfo(
         val tourNumber: Int,
         val tableNumber: Int,
@@ -101,52 +82,45 @@ class TournamentService(
         val tableLocation: String?
     )
 
-    /**
-     * Получает информацию о рассадке игроков за столами в определенном туре
-     * @return Карта: Номер стола -> Список (игрок, слот) за этим столом
-     */
-    private fun getTourPlayersInfo(tournamentId: Int, tourNumber: Int): Map<Int, List<PlayerArrangementDto>> {
+    fun getTourPlayersInfo(
+        tournamentId: Long,
+        source: TournamentSource,
+        tourNumber: Int
+    ): Map<Int, List<PlayerArrangementDto>> {
         return transaction {
-            val tournament = TournamentEntity.find { Tournaments.externalId eq tournamentId }.firstOrNull()
-                ?: return@transaction emptyMap()
+            val tournament = TournamentEntity.find {
+                (Tournaments.externalId eq tournamentId) and (Tournaments.tournamentSource eq source.name)
+            }.firstOrNull() ?: return@transaction emptyMap()
 
             val tour = Tour.find {
                 (Tours.tournamentId eq tournament.id) and (Tours.number eq tourNumber)
             }.firstOrNull() ?: return@transaction emptyMap()
 
-            // Получаем данные о расположении игроков за столами
+            val playerColumn = when (source) {
+                TournamentSource.GOMAFIA -> Players.gomafiaId
+                TournamentSource.POLEMICA -> Players.polemicaId
+            }
+
             val query = TourTablePlayers
-                .join(Players, JoinType.INNER, TourTablePlayers.gomafiaId, Players.gomafiaId)
+                .join(Players, JoinType.INNER) { TourTablePlayers.externalPlayerId eq playerColumn }
                 .select { TourTablePlayers.tourId eq tour.id }
 
-            // Группируем результаты по номеру стола
             val result = mutableMapOf<Int, MutableList<PlayerArrangementDto>>()
 
             query.forEach { row ->
                 val tableNumber = row[TourTablePlayers.tableNumber]
                 val player = Player.wrapRow(row)
-                val tourTablePlayer = TourTablePlayer.wrapRow(row)
+                val position = row[TourTablePlayers.position]
 
-                if (!result.containsKey(tableNumber)) {
-                    result[tableNumber] = mutableListOf()
-                }
-
-                result[tableNumber]?.add(
+                result.getOrPut(tableNumber) { mutableListOf() }.add(
                     PlayerArrangementDto(
-                        PlayerGameDto(player.gomafiaId, tourTablePlayer.position),
+                        PlayerGameDto(row[TourTablePlayers.externalPlayerId] ?: 0L, position),
                         player.telegramId
                     )
                 )
             }
 
-            // Возвращаем карту Номер стола -> Список игроков
             result
-        }
-    }
-
-    fun getPlayerTable(games: List<GameDto>, tourNumber: Int, gomafiaId: Int): Pair<Int, Int>? {
-        return games.filter { it.gameNum == tourNumber }.firstNotNullOfOrNull { game ->
-            game.table.find { it.id == gomafiaId }?.let { Pair(game.tableNum!!, it.place!!) }
         }
     }
 }

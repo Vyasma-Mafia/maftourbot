@@ -4,7 +4,6 @@ import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
-import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.select
 
 // Определение таблиц
@@ -12,12 +11,19 @@ object Players : IntIdTable() {
     val telegramId = long("telegram_id").uniqueIndex()
     val gomafiaProfileUrl = text("gomafia_profile_url")
     val gomafiaId = integer("gomafia_id").index()
+    val polemicaProfileUrl = text("polemica_profile_url").nullable()
+    val polemicaId = long("polemica_id").nullable().index()
 }
 
 object Tournaments : IntIdTable() {
-    val externalId = integer("external_id").uniqueIndex()
+    val externalId = long("external_id")
     val name = text("name")
     val ended = bool("ended").default(false)
+    val tournamentSource = varchar("source", 20).default("GOMAFIA")
+
+    init {
+        uniqueIndex(externalId, tournamentSource)
+    }
 }
 
 object Tours : IntIdTable() {
@@ -45,7 +51,7 @@ object TournamentTables : IntIdTable("tournament_tables") {
 object TourTablePlayers : IntIdTable("tour_table_players") {
     val tourId = reference("tour_id", Tours)
     val tableNumber = integer("table_number")
-    val gomafiaId = integer("gomafia_id").nullable()
+    val externalPlayerId = long("external_player_id").nullable()
     val position = integer("position")
 
     init {
@@ -60,12 +66,16 @@ class Player(id: EntityID<Int>) : IntEntity(id) {
     var telegramId by Players.telegramId
     var gomafiaProfileUrl by Players.gomafiaProfileUrl
     var gomafiaId by Players.gomafiaId
+    var polemicaProfileUrl by Players.polemicaProfileUrl
+    var polemicaId by Players.polemicaId
 
     fun toDto() = PlayerDto(
         id = id.value,
         telegramId = telegramId,
         gomafiaProfileUrl = gomafiaProfileUrl,
-        gomafiaId = gomafiaId
+        gomafiaId = gomafiaId,
+        polemicaProfileUrl = polemicaProfileUrl,
+        polemicaId = polemicaId
     )
 }
 
@@ -74,12 +84,14 @@ class TournamentEntity(id: EntityID<Int>) : IntEntity(id) {
 
     var externalId by Tournaments.externalId
     var name by Tournaments.name
+    var source by Tournaments.tournamentSource
     val tours by Tour.referrersOn(Tours.tournamentId)
     val tables by TournamentTable.referrersOn(TournamentTables.tournamentId)
 
     fun toDto(includeTours: Boolean = false) = TournamentDto(
         id = externalId,
         name = name,
+        source = TournamentSource.valueOf(source),
         tours = if (includeTours) tours.map { it.toDto(includeTables = true) } else emptyList()
     )
 }
@@ -91,13 +103,12 @@ class Tour(id: EntityID<Int>) : IntEntity(id) {
     var number by Tours.number
     var startTime by Tours.startTime
 
-    // Получаем игроков для столов в этом туре
     fun getTablesWithPlayers(): Map<Int, List<PlayerGameDto>> {
-        return TourTablePlayers.join(Players, JoinType.INNER, TourTablePlayers.gomafiaId, Players.gomafiaId)
+        return TourTablePlayers
             .select { TourTablePlayers.tourId eq this@Tour.id }
             .groupBy(
                 { it[TourTablePlayers.tableNumber] },
-                { PlayerGameDto(Player.wrapRow(it).gomafiaId, TourTablePlayer.wrapRow(it).position) }
+                { PlayerGameDto(it[TourTablePlayers.externalPlayerId] ?: 0L, it[TourTablePlayers.position]) }
             )
     }
 
@@ -120,7 +131,7 @@ class Tour(id: EntityID<Int>) : IntEntity(id) {
 
         return TourDto(
             id = id.value,
-            tournamentId = tournamentId.value,
+            tournamentId = TournamentEntity[tournamentId].externalId,
             number = number,
             startTime = startTime,
             tables = tables
@@ -149,6 +160,6 @@ class TourTablePlayer(id: EntityID<Int>) : IntEntity(id) {
 
     var tourId by TourTablePlayers.tourId
     var tableNumber by TourTablePlayers.tableNumber
-    var playerId by TourTablePlayers.gomafiaId
+    var externalPlayerId by TourTablePlayers.externalPlayerId
     var position by TourTablePlayers.position
 }

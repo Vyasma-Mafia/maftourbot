@@ -31,6 +31,10 @@ dependencies {
     // Gomafia
     implementation("io.github.mralex1810:gomafia-library:1.0.0")
 
+    // Polemica
+    implementation("io.github.mralex1810:polemica-library:1.8.8")
+    implementation("org.springframework.boot:spring-boot-starter-webflux:3.2.1")
+
     implementation("org.openfolder:kotlin-asyncapi-ktor:3.1.1")
     implementation("io.ktor:ktor-server-cors")
     implementation("io.ktor:ktor-server-core")

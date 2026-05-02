@@ -1,11 +1,18 @@
 package online.mafoverlay
 
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.github.kotlintelegrambot.Bot
 import com.github.kotlintelegrambot.bot
 import com.github.kotlintelegrambot.dispatch
 import com.github.kotlintelegrambot.dispatcher.command
 import com.github.kotlintelegrambot.entities.ChatId
 import com.github.kotlintelegrambot.entities.ParseMode
+import com.github.mafia.vyasma.polemica.library.client.PolemicaClient
+import com.github.mafia.vyasma.polemica.library.client.PolemicaClient.PolemicaCompetitionGameId
+import com.github.mafia.vyasma.polemica.library.client.PolemicaClientImpl
 import com.typesafe.config.ConfigFactory
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -50,7 +57,19 @@ fun main() {
 
     val gomafiaClient = GomafiaRestClient(httpClient)
 
-    val tournamentService = TournamentService(playerRepository, gomafiaClient, tournamentRepository)
+    val objectMapper = ObjectMapper().apply {
+        configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        registerModule(JavaTimeModule())
+        registerKotlinModule()
+    }
+    val polemicaClient = PolemicaClientImpl(
+        polemicaBaseUrl = config.property("polemica.baseUrl").getString(),
+        polemicaUsername = config.property("polemica.username").getString(),
+        polemicaPassword = config.property("polemica.password").getString(),
+        objectMapper = objectMapper
+    )
+
+    val tournamentService = TournamentService(playerRepository, tournamentRepository)
 
     // Telegram бот
     val telegramBotToken = config.property("telegram.bot.token").getString()
@@ -64,6 +83,8 @@ fun main() {
                     Привет! Я бот для уведомлений о турнирах по спортивной мафии.
                     Чтобы получать уведомления, зарегистрируйтесь с помощью команды:
                     /register https://gomafia.pro/stats/YOUR_ID
+                    или
+                    /register https://polemicagame.com/user/YOUR_ID
                 """.trimIndent()
 
                 bot.sendMessage(
@@ -76,15 +97,39 @@ fun main() {
                 val args = message.text?.split(" ")
                 if (args != null && args.size > 1) {
                     val profileUrl = args[1]
-                    if (profileUrl.matches(Regex("https://gomafia.pro/stats/\\d+"))) {
-                        val gomafiaId = profileUrl.substringAfterLast("/").toInt()
-                        playerRepository.savePlayer(
-                            PlayerDto(
-                                gomafiaProfileUrl = profileUrl,
-                                telegramId = message.chat.id,
-                                gomafiaId = gomafiaId
+                    when {
+                        profileUrl.matches(Regex("https://gomafia\\.pro/stats/\\d+")) -> {
+                            val gomafiaId = profileUrl.substringAfterLast("/").toInt()
+                            playerRepository.savePlayer(
+                                PlayerDto(
+                                    gomafiaProfileUrl = profileUrl,
+                                    telegramId = message.chat.id,
+                                    gomafiaId = gomafiaId
+                                )
                             )
-                        )
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(message.chat.id),
+                                text = "Регистрация через gomafia.pro успешна!"
+                            )
+                        }
+                        profileUrl.matches(Regex("https://polemicagame\\.com/user/\\d+")) -> {
+                            val polemicaId = profileUrl.substringAfterLast("/").toLong()
+                            playerRepository.savePolemicaPlayer(
+                                telegramId = message.chat.id,
+                                polemicaId = polemicaId,
+                                profileUrl = profileUrl
+                            )
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(message.chat.id),
+                                text = "Регистрация через polemicagame.com успешна!"
+                            )
+                        }
+                        else -> {
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(message.chat.id),
+                                text = "Неизвестный формат ссылки. Поддерживаются gomafia.pro и polemicagame.com"
+                            )
+                        }
                     }
                 }
             }
@@ -102,9 +147,8 @@ fun main() {
                     return@command
                 }
 
-                // Запускаем корутину для получения данных
                 try {
-                    val arrangementMessage = tournamentService.getPlayerArrangement(player.gomafiaId)
+                    val arrangementMessage = tournamentService.getPlayerArrangement(player)
 
                     if (arrangementMessage.isEmpty()) {
                         bot.sendMessage(
@@ -133,7 +177,7 @@ fun main() {
                     text = """
                             Доступные команды:
                             /start - Начать работу с ботом
-                            /register [ссылка] - Зарегистрироваться, указав ссылку на ваш профиль gomafia
+                            /register [ссылка] - Зарегистрироваться, указав ссылку на ваш профиль gomafia или polemica
                             /arrangement - Получить информацию о вашей рассадке во всех активных турнирах
                             /help - Показать эту справку
                         """.trimIndent()
@@ -144,11 +188,9 @@ fun main() {
         }
     }
 
-    // Сервис уведомлений
     val notificationService = NotificationService(
         telegramBot,
         playerRepository,
-        gomafiaClient,
         tournamentRepository,
         tournamentService
     )
@@ -163,7 +205,7 @@ fun main() {
 
         configureTemplating()
 
-        configureRouting(telegramBot, notificationService, gomafiaClient, tournamentRepository)
+        configureRouting(telegramBot, notificationService, gomafiaClient, polemicaClient, tournamentRepository)
     }.start(wait = true)
 }
 
@@ -186,12 +228,36 @@ fun initDatabase(config: ApplicationConfig) {
     transaction {
         SchemaUtils.create(Players, Tournaments, Tours, TournamentTables, TourTablePlayers)
     }
+
+    // Миграции для поддержки polemica
+    transaction {
+        exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS polemica_profile_url TEXT")
+        exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS polemica_id BIGINT")
+        exec("CREATE INDEX IF NOT EXISTS players_polemica_id ON players(polemica_id)")
+
+        exec("ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'GOMAFIA'")
+        exec("ALTER TABLE tournaments ALTER COLUMN external_id TYPE BIGINT")
+        exec("DROP INDEX IF EXISTS tournaments_external_id")
+        exec("CREATE UNIQUE INDEX IF NOT EXISTS tournaments_external_id_source ON tournaments(external_id, source)")
+
+        exec("""
+            DO ${'$'}${'$'}
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tour_table_players' AND column_name='gomafia_id') THEN
+                    ALTER TABLE tour_table_players RENAME COLUMN gomafia_id TO external_player_id;
+                END IF;
+            END
+            ${'$'}${'$'}
+        """.trimIndent())
+        exec("ALTER TABLE tour_table_players ALTER COLUMN external_player_id TYPE BIGINT")
+    }
 }
 
 fun Application.configureRouting(
     telegramBot: Bot,
     notificationService: NotificationService,
     gomafiaClient: GomafiaRestClient,
+    polemicaClient: PolemicaClient,
     tournamentRepository: TournamentRepository
 ) {
     routing {
@@ -208,87 +274,98 @@ fun Application.configureRouting(
             )
         }
 
-        get("/admin/tournament/{id}") {
+        get("/admin/tournament/{source}/{id}") {
+            val source = call.parameters["source"]?.uppercase()?.let {
+                try { TournamentSource.valueOf(it) } catch (_: Exception) { null }
+            } ?: return@get call.respond(HttpStatusCode.BadRequest)
             val tournamentId =
-                call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.BadRequest)
-            // Получаем данные турнира
-            tournamentRepository.saveTournament(gomafiaClient.getTournamentDto(tournamentId))
-            val tournament = tournamentRepository.getTournament(tournamentId) ?: return@get call.respond(HttpStatusCode.NotFound)
+                call.parameters["id"]?.toLongOrNull() ?: return@get call.respond(HttpStatusCode.BadRequest)
 
-            // Собираем уникальные номера столов из всех туров
+            val tournamentDto = when (source) {
+                TournamentSource.GOMAFIA -> gomafiaClient.getTournamentDto(tournamentId.toInt())
+                TournamentSource.POLEMICA -> polemicaClient.getTournamentDto(tournamentId)
+            }
+            tournamentRepository.saveTournament(tournamentDto)
+            val tournament = tournamentRepository.getTournament(tournamentId, source)
+                ?: return@get call.respond(HttpStatusCode.NotFound)
+
             val tableNumbers = tournament.tours.flatMap { tour ->
                 tour.tables.map { it.number }
             }.distinct().sorted()
 
-            // Собираем информацию о местоположении столов
             val tableLocations = tournament.tours.flatMap { tour ->
                 tour.tables.filter { it.location != null }
                     .map { it.number to it.location }
             }.distinctBy { it.first }.toMap()
 
-            // Передаем все данные в шаблон
             call.respondTemplate(
                 "admin_tournament.html", mapOf(
                     "tournament" to tournament,
                     "tableNumbers" to tableNumbers,
-                    "tableLocations" to tableLocations
+                    "tableLocations" to tableLocations,
+                    "source" to source.name.lowercase()
                 )
             )
         }
 
-
-        post("/admin/tournament/{id}/tour/{tourNumber}/update") {
+        post("/admin/tournament/{source}/{id}/tour/{tourNumber}/update") {
+            val source = call.parameters["source"]?.uppercase()?.let {
+                try { TournamentSource.valueOf(it) } catch (_: Exception) { null }
+            } ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tournamentId =
-                call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+                call.parameters["id"]?.toLongOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tourNumber =
                 call.parameters["tourNumber"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
 
             val formParameters = call.receiveParameters()
             val startTime = formParameters["startTime"]
 
-            tournamentRepository.updateTourStartTime(tournamentId, tourNumber, startTime)
-            call.respondRedirect("/admin/tournament/$tournamentId")
+            tournamentRepository.updateTourStartTime(tournamentId, source, tourNumber, startTime)
+            call.respondRedirect("/admin/tournament/${source.name.lowercase()}/$tournamentId")
         }
 
-        post("/admin/tournament/{id}/table/{tableNumber}/update") {
+        post("/admin/tournament/{source}/{id}/table/{tableNumber}/update") {
+            val source = call.parameters["source"]?.uppercase()?.let {
+                try { TournamentSource.valueOf(it) } catch (_: Exception) { null }
+            } ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tournamentId =
-                call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+                call.parameters["id"]?.toLongOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tableNumber =
                 call.parameters["tableNumber"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
 
             val formParameters = call.receiveParameters()
             val location = formParameters["location"]
 
-            tournamentRepository.updateTableLocation(tournamentId, tableNumber, location)
-            call.respondRedirect("/admin/tournament/$tournamentId")
+            tournamentRepository.updateTableLocation(tournamentId, source, tableNumber, location)
+            call.respondRedirect("/admin/tournament/${source.name.lowercase()}/$tournamentId")
         }
 
-        post("/admin/tournament/{id}/tour/{tourNumber}/notify") {
+        post("/admin/tournament/{source}/{id}/tour/{tourNumber}/notify") {
+            val source = call.parameters["source"]?.uppercase()?.let {
+                try { TournamentSource.valueOf(it) } catch (_: Exception) { null }
+            } ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tournamentId =
-                call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+                call.parameters["id"]?.toLongOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tourNumber =
                 call.parameters["tourNumber"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
 
-            val tournament = tournamentRepository.getTournament(tournamentId)
+            val tournament = tournamentRepository.getTournament(tournamentId, source)
             val tour = tournament?.tours?.find { it.number == tourNumber }
 
             if (tournament != null && tour != null) {
-                val tableLocations = tour.tables.associate { it.number to (it.location ?: "") }
-
-                notificationService.notifyPlayersAboutTour(
-                    tournamentId,
-                    tourNumber,
-                )
+                notificationService.notifyPlayersAboutTour(tournamentId, source, tourNumber)
             }
 
-            call.respondRedirect("/admin/tournament/$tournamentId")
+            call.respondRedirect("/admin/tournament/${source.name.lowercase()}/$tournamentId")
         }
 
-        post("/admin/tournament/{id}/broadcast") {
+        post("/admin/tournament/{source}/{id}/broadcast") {
+            val source = call.parameters["source"]?.uppercase()?.let {
+                try { TournamentSource.valueOf(it) } catch (_: Exception) { null }
+            } ?: return@post call.respond(HttpStatusCode.BadRequest)
             val tournamentId =
-                call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+                call.parameters["id"]?.toLongOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
 
-            // Получаем текст сообщения из формы
             val formParameters = call.receiveParameters()
             val message = formParameters["message"] ?: return@post call.respond(
                 HttpStatusCode.BadRequest,
@@ -296,15 +373,13 @@ fun Application.configureRouting(
             )
 
             if (message.isBlank()) {
-                call.respondRedirect("/admin/tournament/$tournamentId?error=Сообщение не может быть пустым")
+                call.respondRedirect("/admin/tournament/${source.name.lowercase()}/$tournamentId?error=Сообщение не может быть пустым")
                 return@post
             }
 
-            // Отправляем сообщение всем участникам
-            notificationService.broadcastMessage(tournamentId, message)
+            notificationService.broadcastMessage(tournamentId, source, message)
 
-            // Перенаправляем обратно на страницу турнира с сообщением об успехе
-            call.respondRedirect("/admin/tournament/$tournamentId?success=Сообщение успешно отправлено")
+            call.respondRedirect("/admin/tournament/${source.name.lowercase()}/$tournamentId?success=Сообщение успешно отправлено")
         }
 
     }
@@ -324,8 +399,9 @@ suspend fun GomafiaRestClient.getTournamentDto(tournamentId: Int): TournamentDto
 
     // Создаем базовый DTO турнира
     val tournamentDto = TournamentDto(
-        id = gomafiaData.id?.toIntOrNull() ?: tournamentId,
-        name = gomafiaData.title ?: "Турнир #$tournamentId"
+        id = gomafiaData.id?.toLongOrNull() ?: tournamentId.toLong(),
+        name = gomafiaData.title ?: "Турнир #$tournamentId",
+        source = TournamentSource.GOMAFIA
     )
 
     // Если нет игр, возвращаем только базовую информацию
@@ -351,7 +427,7 @@ suspend fun GomafiaRestClient.getTournamentDto(tournamentId: Int): TournamentDto
                     playerDto.id?.let { playerId ->
                         playerDto.place?.let {
                             PlayerGameDto(
-                                gomafiaId = playerId,
+                                externalPlayerId = playerId.toLong(),
                                 position = it
                             )
                         }
@@ -379,5 +455,55 @@ suspend fun GomafiaRestClient.getTournamentDto(tournamentId: Int): TournamentDto
     }.sortedBy { it.number } // Сортируем туры по номерам
 
     // Добавляем туры в итоговый DTO турнира
+    return tournamentDto.copy(tours = tours)
+}
+
+fun PolemicaClient.getTournamentDto(competitionId: Long): TournamentDto {
+    val competition = getCompetition(competitionId)
+    val gameRefs = getGamesFromCompetition(competitionId)
+
+    val tournamentDto = TournamentDto(
+        id = competitionId,
+        name = competition?.name ?: "Турнир Polemica #$competitionId",
+        source = TournamentSource.POLEMICA
+    )
+
+    if (gameRefs.isEmpty()) {
+        return tournamentDto
+    }
+
+    val gamesByTour = gameRefs.groupBy { it.num.toInt() }
+
+    val tours = gamesByTour.map { (tourNumber, tourGameRefs) ->
+        val tablesByNumber = tourGameRefs.groupBy { it.table.toInt() }
+
+        val tables = tablesByNumber.map { (tableNumber, tableGameRefs) ->
+            val players = tableGameRefs.flatMap { ref ->
+                val game = getGameFromCompetition(
+                    PolemicaCompetitionGameId(competitionId, ref.id, ref.version)
+                )
+                game.players?.mapNotNull { player ->
+                    player.player?.let {
+                        PlayerGameDto(
+                            externalPlayerId = it.id,
+                            position = player.position.value
+                        )
+                    }
+                } ?: emptyList()
+            }.distinctBy { it.externalPlayerId }
+
+            TableDto(
+                number = tableNumber,
+                players = players
+            )
+        }
+
+        TourDto(
+            tournamentId = competitionId,
+            number = tourNumber,
+            tables = tables
+        )
+    }.sortedBy { it.number }
+
     return tournamentDto.copy(tours = tours)
 }

@@ -282,7 +282,7 @@
         <span class="collapse-icon">▼</span>
     </div>
     <div class="section-content">
-        <form method="post" th:action="'/admin/tournament/' + ${tournament.id} + '/broadcast'">
+        <form method="post" th:action="'/admin/tournament/' + ${source} + '/' + ${tournament.id} + '/broadcast'">
             <div class="form-group">
                 <label for="broadcast-message">Текст сообщения:</label>
                 <textarea id="broadcast-message" name="message" rows="3" style="width: 100%; resize: vertical; padding: 8px;" placeholder="Введите сообщение для всех участников турнира"></textarea>
@@ -306,7 +306,7 @@
                     <h3 th:text="'Стол ' + ${tableNumber}">Стол</h3>
                 </div>
                 <form method="post"
-                        th:action="'/admin/tournament/' + ${tournament.id} + '/table/' + ${tableNumber} + '/update'"
+                        th:action="'/admin/tournament/' + ${source} + '/' + ${tournament.id} + '/table/' + ${tableNumber} + '/update'"
                         class="compact-form">
                     <div class="form-group">
                         <input type="text" name="location"
@@ -336,7 +336,7 @@
                 </div>
 
                 <form method="post"
-                        th:action="'/admin/tournament/' + ${tournament.id} + '/tour/' + ${tour.number} + '/update'"
+                        th:action="'/admin/tournament/' + ${source} + '/' + ${tournament.id} + '/tour/' + ${tour.number} + '/update'"
                         class="compact-form">
                     <div class="form-group">
                         <label>Время начала:</label>
@@ -347,7 +347,7 @@
                 </form>
 
                 <form method="post"
-                        th:action="'/admin/tournament/' + ${tournament.id} + '/tour/' + ${tour.number} + '/notify'">
+                        th:action="'/admin/tournament/' + ${source} + '/' + ${tournament.id} + '/tour/' + ${tour.number} + '/notify'">
                     <button type="submit" class="notify-button">Отправить уведомления</button>
                 </form>
             </div>
