@@ -203,15 +203,21 @@ fun main() {
                     } else {
                         botLogger.info("Отправляем рассадку пользователю {} ({} символов)", telegramId, arrangementMessage.length)
                         try {
-                            runBlocking {
+                            val plainMessage = arrangementMessage.replace("*", "").replace("_", "")
+                            val result = runBlocking {
                                 bot.sendMessage(
                                     chatId = ChatId.fromId(telegramId),
-                                    text = arrangementMessage,
-                                    parseMode = ParseMode.MARKDOWN
+                                    text = plainMessage
                                 )
                             }
+                            if (result == null) {
+                                botLogger.error("sendMessage вернул null для пользователя {}", telegramId)
+                            } else {
+                                botLogger.debug("Сообщение отправлено, result={}", result)
+                            }
                         } catch (e: Exception) {
-                            botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
+                            botLogger.error("Ошибка отправки сообщения пользователю {}: {} (text sample: {})", 
+                                telegramId, e.message, arrangementMessage.take(100).replace("\n", "\\n"))
                         }
                     }
                 } catch (e: Exception) {
