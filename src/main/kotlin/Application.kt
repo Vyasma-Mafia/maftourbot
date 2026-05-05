@@ -40,8 +40,10 @@ import io.ktor.server.thymeleaf.respondTemplate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.slf4j.LoggerFactory
 
 fun main() {
+    val logger = LoggerFactory.getLogger("mafoverlay")
     val config = HoconApplicationConfig(ConfigFactory.load())
 
     // Инициализируем базу данных
@@ -75,8 +77,8 @@ fun main() {
     val telegramBotToken = config.property("telegram.bot.token").getString()
     val telegramBot = bot {
         token = telegramBotToken
+        val botLogger = LoggerFactory.getLogger("telegram.bot")
 
-        // Установка диспетчера для обработки сообщений
         dispatch {
             command("start") {
                 val messageStr = """
@@ -86,15 +88,20 @@ fun main() {
                     или
                     /register https://polemicagame.com/user/YOUR_ID
                 """.trimIndent()
-
-                bot.sendMessage(
-                    chatId = ChatId.fromId(message.chat.id),
-                    text = messageStr
-                )
+                botLogger.debug("Команда /start от пользователя {}", message.chat.id)
+                try {
+                    bot.sendMessage(
+                        chatId = ChatId.fromId(message.chat.id),
+                        text = messageStr
+                    )
+                } catch (e: Exception) {
+                    botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
+                }
             }
 
             command("register") {
                 val args = message.text?.split(" ")
+                botLogger.debug("Команда /register от пользователя {}", message.chat.id)
                 if (args != null && args.size > 1) {
                     val profileUrl = args[1]
                     when {
@@ -107,10 +114,14 @@ fun main() {
                                     gomafiaId = gomafiaId
                                 )
                             )
-                            bot.sendMessage(
-                                chatId = ChatId.fromId(message.chat.id),
-                                text = "Регистрация через gomafia.pro успешна!"
-                            )
+                            try {
+                                bot.sendMessage(
+                                    chatId = ChatId.fromId(message.chat.id),
+                                    text = "Регистрация через gomafia.pro успешна!"
+                                )
+                            } catch (e: Exception) {
+                                botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
+                            }
                         }
                         profileUrl.matches(Regex("https://polemicagame\\.com/user/\\d+")) -> {
                             val polemicaId = profileUrl.substringAfterLast("/").toLong()
@@ -119,16 +130,24 @@ fun main() {
                                 polemicaId = polemicaId,
                                 profileUrl = profileUrl
                             )
-                            bot.sendMessage(
-                                chatId = ChatId.fromId(message.chat.id),
-                                text = "Регистрация через polemicagame.com успешна!"
-                            )
+                            try {
+                                bot.sendMessage(
+                                    chatId = ChatId.fromId(message.chat.id),
+                                    text = "Регистрация через polemicagame.com успешна!"
+                                )
+                            } catch (e: Exception) {
+                                botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
+                            }
                         }
                         else -> {
-                            bot.sendMessage(
-                                chatId = ChatId.fromId(message.chat.id),
-                                text = "Неизвестный формат ссылки. Поддерживаются gomafia.pro и polemicagame.com"
-                            )
+                            try {
+                                bot.sendMessage(
+                                    chatId = ChatId.fromId(message.chat.id),
+                                    text = "Неизвестный формат ссылки. Поддерживаются gomafia.pro и polemicagame.com"
+                                )
+                            } catch (e: Exception) {
+                                botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
+                            }
                         }
                     }
                 }
@@ -137,51 +156,77 @@ fun main() {
             // В классе TelegramBot
             command("arrangement") {
                 val telegramId = message.chat.id
+                botLogger.info("Получена команда /arrangement от пользователя {}", telegramId)
                 val player = playerRepository.findByTelegramId(telegramId)
 
                 if (player == null) {
-                    bot.sendMessage(
-                        chatId = ChatId.fromId(telegramId),
-                        text = "Вы не зарегистрированы. Используйте команду /register для регистрации."
-                    )
+                    botLogger.debug("Пользователь {} не зарегистрирован", telegramId)
+                    try {
+                        bot.sendMessage(
+                            chatId = ChatId.fromId(telegramId),
+                            text = "Вы не зарегистрированы. Используйте команду /register для регистрации."
+                        )
+                    } catch (e: Exception) {
+                        botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
+                    }
                     return@command
                 }
 
                 try {
+                    botLogger.debug("Получаем рассадку для игрока {} (gomafiaId={}, polemicaId={})",
+                        player.gomafiaProfileUrl, player.gomafiaId, player.polemicaId)
                     val arrangementMessage = tournamentService.getPlayerArrangement(player)
 
                     if (arrangementMessage.isEmpty()) {
-                        bot.sendMessage(
-                            chatId = ChatId.fromId(telegramId),
-                            text = "Информация о вашей рассадке не найдена. Возможно, вы не участвуете ни в одном активном турнире."
-                        )
+                        botLogger.debug("Рассадка пуста для пользователя {}", telegramId)
+                        try {
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(telegramId),
+                                text = "Информация о вашей рассадке не найдена. Возможно, вы не участвуете ни в одном активном турнире."
+                            )
+                        } catch (e: Exception) {
+                            botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
+                        }
                     } else {
-                        bot.sendMessage(
-                            chatId = ChatId.fromId(telegramId),
-                            text = arrangementMessage,
-                            parseMode = ParseMode.MARKDOWN
-                        )
+                        botLogger.info("Отправляем рассадку пользователю {} ({} символов)", telegramId, arrangementMessage.length)
+                        try {
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(telegramId),
+                                text = arrangementMessage,
+                                parseMode = ParseMode.MARKDOWN
+                            )
+                        } catch (e: Exception) {
+                            botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
+                        }
                     }
                 } catch (e: Exception) {
-                    bot.sendMessage(
-                        chatId = ChatId.fromId(telegramId),
-                        text = "Произошла ошибка при получении информации о вашей рассадке. Пожалуйста, попробуйте позже."
-                    )
-                    e.printStackTrace()
+                    botLogger.error("Ошибка при получении рассадки для пользователя {}: {}", telegramId, e.message, e)
+                    try {
+                        bot.sendMessage(
+                            chatId = ChatId.fromId(telegramId),
+                            text = "Произошла ошибка при получении информации о вашей рассадке. Пожалуйста, попробуйте позже."
+                        )
+                    } catch (sendEx: Exception) {
+                        botLogger.error("Ошибка отправки сообщения об ошибке пользователю {}: {}", telegramId, sendEx.message, sendEx)
+                    }
                 }
             }
 
             command("help") {
-                bot.sendMessage(
-                    chatId = ChatId.fromId(message.chat.id),
-                    text = """
-                            Доступные команды:
-                            /start - Начать работу с ботом
-                            /register [ссылка] - Зарегистрироваться, указав ссылку на ваш профиль gomafia или polemica
-                            /arrangement - Получить информацию о вашей рассадке во всех активных турнирах
-                            /help - Показать эту справку
-                        """.trimIndent()
-                )
+                try {
+                    bot.sendMessage(
+                        chatId = ChatId.fromId(message.chat.id),
+                        text = """
+                                Доступные команды:
+                                /start - Начать работу с ботом
+                                /register [ссылка] - Зарегистрироваться, указав ссылку на ваш профиль gomafia или polemica
+                                /arrangement - Получить информацию о вашей рассадке во всех активных турнирах
+                                /help - Показать эту справку
+                            """.trimIndent()
+                    )
+                } catch (e: Exception) {
+                    botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
+                }
             }
 
 

@@ -4,11 +4,13 @@ import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.slf4j.LoggerFactory
 
 class TournamentService(
     private val playerRepository: PlayerRepository,
     private val tournamentRepository: TournamentRepository
 ) {
+    private val logger = LoggerFactory.getLogger(TournamentService::class.java)
 
     fun getPlayerArrangement(player: PlayerDto): String {
         try {
@@ -69,8 +71,7 @@ class TournamentService(
 
             return if (result.isEmpty()) "Информация о вашей рассадке не найдена." else result.toString().trim()
         } catch (e: Exception) {
-            println("Ошибка при получении информации о рассадке игрока: ${e.message}")
-            e.printStackTrace()
+            logger.error("Ошибка при получении информации о рассадке игрока {}: {}", player.gomafiaProfileUrl, e.message, e)
             return "Произошла ошибка при получении информации о рассадке."
         }
     }

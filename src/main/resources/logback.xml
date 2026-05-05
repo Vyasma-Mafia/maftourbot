@@ -9,4 +9,8 @@
     </root>
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
+    <logger name="telegram.bot" level="DEBUG"/>
+    <logger name="mafoverlay" level="DEBUG"/>
+    <logger name="online.mafoverlay.TournamentService" level="DEBUG"/>
+    <logger name="online.mafoverlay.NotificationService" level="DEBUG"/>
 </configuration>

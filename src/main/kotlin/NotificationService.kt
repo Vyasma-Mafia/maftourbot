@@ -3,6 +3,7 @@ package online.mafoverlay
 import com.github.kotlintelegrambot.Bot
 import com.github.kotlintelegrambot.entities.ChatId
 import com.github.kotlintelegrambot.entities.ParseMode
+import org.slf4j.LoggerFactory
 
 class NotificationService(
     private val telegramBot: Bot,
@@ -10,6 +11,8 @@ class NotificationService(
     private val tournamentRepository: TournamentRepository,
     private val tournamentService: TournamentService
 ) {
+    private val logger = LoggerFactory.getLogger(NotificationService::class.java)
+
     fun notifyPlayersAboutTour(tournamentId: Long, source: TournamentSource, tourNumber: Int) {
         val tournament = tournamentRepository.getTournament(tournamentId, source) ?: return
         val tour = tournament.tours.find { it.number == tourNumber } ?: return
@@ -34,13 +37,16 @@ class NotificationService(
                             append("Местоположение: $location\n")
                         }
                     }
-                    telegramBot.sendMessage(
+                    val result = telegramBot.sendMessage(
                         ChatId.fromId(playerArrangement.telegramId),
                         message,
                         parseMode = ParseMode.MARKDOWN
                     )
+                    if (result == null) {
+                        logger.error("sendMessage вернул null для пользователя {}", playerArrangement.telegramId)
+                    }
                 } catch (e: Exception) {
-                    println("Ошибка при отправке уведомления: ${e.message}")
+                    logger.error("Исключение при отправке уведомления пользователю {}: {}", playerArrangement.telegramId, e.message, e)
                 }
             }
         }
@@ -61,9 +67,12 @@ class NotificationService(
 
         for (playerArrangement in tourPlayersInfo) {
             try {
-                telegramBot.sendMessage(ChatId.fromId(playerArrangement.telegramId), formattedMessage)
+                val result = telegramBot.sendMessage(ChatId.fromId(playerArrangement.telegramId), formattedMessage)
+                if (result == null) {
+                    logger.error("sendMessage вернул null для пользователя {}", playerArrangement.telegramId)
+                }
             } catch (e: Exception) {
-                println("Ошибка при отправке сообщения: ${e.message}")
+                logger.error("Исключение при отправке broadcast пользователю {}: {}", playerArrangement.telegramId, e.message, e)
             }
         }
     }
