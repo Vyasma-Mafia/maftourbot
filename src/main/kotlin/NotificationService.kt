@@ -4,6 +4,7 @@ import com.github.kotlintelegrambot.Bot
 import com.github.kotlintelegrambot.entities.ChatId
 import com.github.kotlintelegrambot.entities.ParseMode
 import org.slf4j.LoggerFactory
+import kotlinx.coroutines.runBlocking
 
 class NotificationService(
     private val telegramBot: Bot,
@@ -37,11 +38,13 @@ class NotificationService(
                             append("Местоположение: $location\n")
                         }
                     }
-                    val result = telegramBot.sendMessage(
-                        ChatId.fromId(playerArrangement.telegramId),
-                        message,
-                        parseMode = ParseMode.MARKDOWN
-                    )
+                    val result = runBlocking {
+                        telegramBot.sendMessage(
+                            ChatId.fromId(playerArrangement.telegramId),
+                            message,
+                            parseMode = ParseMode.MARKDOWN
+                        )
+                    }
                     if (result == null) {
                         logger.error("sendMessage вернул null для пользователя {}", playerArrangement.telegramId)
                     }
@@ -67,7 +70,9 @@ class NotificationService(
 
         for (playerArrangement in tourPlayersInfo) {
             try {
-                val result = telegramBot.sendMessage(ChatId.fromId(playerArrangement.telegramId), formattedMessage)
+                val result = runBlocking {
+                    telegramBot.sendMessage(ChatId.fromId(playerArrangement.telegramId), formattedMessage)
+                }
                 if (result == null) {
                     logger.error("sendMessage вернул null для пользователя {}", playerArrangement.telegramId)
                 }

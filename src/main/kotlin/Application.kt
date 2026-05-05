@@ -41,6 +41,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
+import kotlinx.coroutines.runBlocking
 
 fun main() {
     val logger = LoggerFactory.getLogger("mafoverlay")
@@ -90,10 +91,12 @@ fun main() {
                 """.trimIndent()
                 botLogger.debug("Команда /start от пользователя {}", message.chat.id)
                 try {
-                    bot.sendMessage(
-                        chatId = ChatId.fromId(message.chat.id),
-                        text = messageStr
-                    )
+                    runBlocking {
+                        bot.sendMessage(
+                            chatId = ChatId.fromId(message.chat.id),
+                            text = messageStr
+                        )
+                    }
                 } catch (e: Exception) {
                     botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
                 }
@@ -115,10 +118,12 @@ fun main() {
                                 )
                             )
                             try {
-                                bot.sendMessage(
-                                    chatId = ChatId.fromId(message.chat.id),
-                                    text = "Регистрация через gomafia.pro успешна!"
-                                )
+                                runBlocking {
+                                    bot.sendMessage(
+                                        chatId = ChatId.fromId(message.chat.id),
+                                        text = "Регистрация через gomafia.pro успешна!"
+                                    )
+                                }
                             } catch (e: Exception) {
                                 botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
                             }
@@ -131,20 +136,24 @@ fun main() {
                                 profileUrl = profileUrl
                             )
                             try {
-                                bot.sendMessage(
-                                    chatId = ChatId.fromId(message.chat.id),
-                                    text = "Регистрация через polemicagame.com успешна!"
-                                )
+                                runBlocking {
+                                    bot.sendMessage(
+                                        chatId = ChatId.fromId(message.chat.id),
+                                        text = "Регистрация через polemicagame.com успешна!"
+                                    )
+                                }
                             } catch (e: Exception) {
                                 botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
                             }
                         }
                         else -> {
                             try {
-                                bot.sendMessage(
-                                    chatId = ChatId.fromId(message.chat.id),
-                                    text = "Неизвестный формат ссылки. Поддерживаются gomafia.pro и polemicagame.com"
-                                )
+                                runBlocking {
+                                    bot.sendMessage(
+                                        chatId = ChatId.fromId(message.chat.id),
+                                        text = "Неизвестный формат ссылки. Поддерживаются gomafia.pro и polemicagame.com"
+                                    )
+                                }
                             } catch (e: Exception) {
                                 botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
                             }
@@ -162,10 +171,12 @@ fun main() {
                 if (player == null) {
                     botLogger.debug("Пользователь {} не зарегистрирован", telegramId)
                     try {
-                        bot.sendMessage(
-                            chatId = ChatId.fromId(telegramId),
-                            text = "Вы не зарегистрированы. Используйте команду /register для регистрации."
-                        )
+                        runBlocking {
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(telegramId),
+                                text = "Вы не зарегистрированы. Используйте команду /register для регистрации."
+                            )
+                        }
                     } catch (e: Exception) {
                         botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
                     }
@@ -180,21 +191,25 @@ fun main() {
                     if (arrangementMessage.isEmpty()) {
                         botLogger.debug("Рассадка пуста для пользователя {}", telegramId)
                         try {
-                            bot.sendMessage(
-                                chatId = ChatId.fromId(telegramId),
-                                text = "Информация о вашей рассадке не найдена. Возможно, вы не участвуете ни в одном активном турнире."
-                            )
+                            runBlocking {
+                                bot.sendMessage(
+                                    chatId = ChatId.fromId(telegramId),
+                                    text = "Информация о вашей рассадке не найдена. Возможно, вы не участвуете ни в одном активном турнире."
+                                )
+                            }
                         } catch (e: Exception) {
                             botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
                         }
                     } else {
                         botLogger.info("Отправляем рассадку пользователю {} ({} символов)", telegramId, arrangementMessage.length)
                         try {
-                            bot.sendMessage(
-                                chatId = ChatId.fromId(telegramId),
-                                text = arrangementMessage,
-                                parseMode = ParseMode.MARKDOWN
-                            )
+                            runBlocking {
+                                bot.sendMessage(
+                                    chatId = ChatId.fromId(telegramId),
+                                    text = arrangementMessage,
+                                    parseMode = ParseMode.MARKDOWN
+                                )
+                            }
                         } catch (e: Exception) {
                             botLogger.error("Ошибка отправки сообщения пользователю {}: {}", telegramId, e.message, e)
                         }
@@ -202,10 +217,12 @@ fun main() {
                 } catch (e: Exception) {
                     botLogger.error("Ошибка при получении рассадки для пользователя {}: {}", telegramId, e.message, e)
                     try {
-                        bot.sendMessage(
-                            chatId = ChatId.fromId(telegramId),
-                            text = "Произошла ошибка при получении информации о вашей рассадке. Пожалуйста, попробуйте позже."
-                        )
+                        runBlocking {
+                            bot.sendMessage(
+                                chatId = ChatId.fromId(telegramId),
+                                text = "Произошла ошибка при получении информации о вашей рассадке. Пожалуйста, попробуйте позже."
+                            )
+                        }
                     } catch (sendEx: Exception) {
                         botLogger.error("Ошибка отправки сообщения об ошибке пользователю {}: {}", telegramId, sendEx.message, sendEx)
                     }
@@ -214,16 +231,18 @@ fun main() {
 
             command("help") {
                 try {
-                    bot.sendMessage(
-                        chatId = ChatId.fromId(message.chat.id),
-                        text = """
+                    runBlocking {
+                        bot.sendMessage(
+                            chatId = ChatId.fromId(message.chat.id),
+                            text = """
                                 Доступные команды:
                                 /start - Начать работу с ботом
                                 /register [ссылка] - Зарегистрироваться, указав ссылку на ваш профиль gomafia или polemica
                                 /arrangement - Получить информацию о вашей рассадке во всех активных турнирах
                                 /help - Показать эту справку
                             """.trimIndent()
-                    )
+                        )
+                    }
                 } catch (e: Exception) {
                     botLogger.error("Ошибка отправки сообщения пользователю {}: {}", message.chat.id, e.message, e)
                 }
